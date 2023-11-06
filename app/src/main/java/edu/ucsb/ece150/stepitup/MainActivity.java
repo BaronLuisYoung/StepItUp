@@ -25,24 +25,22 @@ import android.Manifest;
 import android.widget.TextView;
 import android.widget.Toast;
 
-
-import java.time.temporal.ValueRange;
-import java.util.TreeSet;
-import java.util.concurrent.TimeUnit;
-
 public class MainActivity extends AppCompatActivity implements SensorEventListener  {
     private StepDetector mStepDetector = new StepDetector();
     private int currentStepGoal = 0;
-    private int totalSteps;
-    private float stepsPerHour;
-    private int goalsCompleted;
+
+    private int builtInStepCounter = 0;
+    private int totalSteps  = 0;
+    private float stepsPerHour = 0;
+    private int goalsCompleted = 0;
+
 
     private EditText editTextNumber;
     private Button saveButton;
     private Button resetButton;
 
     private TextView stepCounterValueView;
-    private TextView totalStepsValueView;
+    private TextView builtInStepCounterView;
     private TextView stepsPerHourValueView;
     private TextView goalsCompletedValueView;
 
@@ -52,14 +50,18 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private SensorManager mSensorManager;
     private Sensor mAccelerometer;
     private Sensor mStepCounterSensor;
-    private float[][] accelerometerBuffer;
     private Boolean stepFlag = false;
     private Boolean goalSet = false;
+    private SharedPreferences sharedPref;
+    private SharedPreferences.Editor editor;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        setContentView(R.layout.activity_main_land);
+        sharedPref = getSharedPreferences("MyPrefs", Context.MODE_PRIVATE);
         restoreData();
+
         //Creates toolbar and title
         Toolbar toolbar = findViewById(R.id.StepItUpTitle);
         toolbar.setTitle("Step It Up");
@@ -81,6 +83,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                         //save current input
                         int value = Integer.parseInt(text);
                         currentStepGoal = value;
+                        goalSet = true;
                         Log.d("MainActivity", "onCreate/saveButton/onClick: currentStepGoal value " + Integer.toString(currentStepGoal));
 
                     } catch (NumberFormatException e) {
@@ -97,6 +100,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
                 // Reset the count to null (zero in this case)
                 Log.d("MainActivity", "onCreate/resetButton/onClick: entered");
                 currentStepGoal = 0;
+                goalSet = false;
                 editTextNumber.setText(""); // Clear the EditText
             }
         });
@@ -130,44 +134,89 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
         SensorManager mSensorManager = (SensorManager) getSystemService(Context.SENSOR_SERVICE);
         mAccelerometer = mSensorManager.getDefaultSensor (Sensor.TYPE_ACCELEROMETER);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT) {
+            Log.d("MainActivity", "onCreate: enabled mStepCounterSensor ");
             mStepCounterSensor = mSensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER);
         }
         if (mAccelerometer != null) {
+            Log.d("MainActivity", "Accelerometer sensor available.");
             mSensorManager.registerListener(this, mAccelerometer, SensorManager.SENSOR_DELAY_GAME);
+        } else {
+        Log.d("MainActivity", "Accelerometer sensor not available.");
         }
+
         if (mStepCounterSensor != null) {
+            Log.d("MainActivity", "Step counter sensor available.");
             mSensorManager.registerListener(this, mStepCounterSensor, SensorManager. SENSOR_DELAY_FASTEST);
+        } else {
+        Log.d("MainActivity", "Step counter sensor not available.");
         }
     }
 
     private void restoreData() {
-        Log.d("MainActivity", "restoreData:");
-        SharedPreferences sharedPref = getSharedPreferences("MyPrefs", Context.MODE_PRIVATE);
-        if(!sharedPref.contains("MyPrefs")){
-            return;
+        Log.d("MainActivity", "restoreData:entered");
+        sharedPref = getSharedPreferences("MyPrefs", Context.MODE_PRIVATE);
+        if(sharedPref.contains("builtInStepCounter")){
+            currentStepGoal = sharedPref.getInt("currentStepGoal", 0);
+            builtInStepCounter =  sharedPref.getInt("builtInStepCounter", 0);
+            totalSteps = sharedPref.getInt("totalSteps",0);
+            stepsPerHour = sharedPref.getFloat("stepsPerHour", 0);
+            goalsCompleted = sharedPref.getInt("goalsCompleted", 0);
+
+            Log.d("MainActivity", "restoreData: Data values Restored");
+
+            editTextNumber = findViewById(R.id.editTextNumber);
+            Log.d("MainActivity", "restoreData: currentStepGoal " + currentStepGoal);
+            editTextNumber.setText("" + (currentStepGoal));
+
+            builtInStepCounterView = findViewById(R.id.builtInstepCounterValue);
+            Log.d("MainActivity", "restoreData: builtInStepCounter " + builtInStepCounter);
+            builtInStepCounterView.setText("" + builtInStepCounter);
+
+            stepCounterValueView = findViewById(R.id.totalStepsValue);
+            Log.d("MainActivity", "restoreData: totalSteps " + totalSteps);
+            stepCounterValueView.setText(""+ totalSteps);
+
+            stepsPerHourValueView = findViewById(R.id.stepsPerHourValue);
+            Log.d("MainActivity", "restoreData: stepsPerHour " + stepsPerHour);
+            stepsPerHourValueView.setText("" + stepsPerHour);
+
+
+            goalsCompletedValueView = findViewById(R.id.goalsCompletedValue);
+            Log.d("MainActivity", "restoreData: goalsCompleted " + goalsCompleted);
+            goalsCompletedValueView.setText("" + goalsCompleted);
+
+            Log.d("MainActivity", "restoreData: Data Restored to screen");
+
         }
 
-        Log.d("MainActivity", "restoreData: Buffer Restored");
+
 
     }
 
     @Override
     public final void onSensorChanged(SensorEvent event) {
         // [TODO] Handle the raw data. Hint: Provide data to the step detector, call `handleStep` if step detected
-        float[] accelerometerVectorSample = event.values;
-        if (accelerometerVectorSample.length >= 3) {
-            float x = accelerometerVectorSample[0];
-            float y = accelerometerVectorSample[1];
-            float z = accelerometerVectorSample[2];
+        if(event.sensor.getType() == Sensor.TYPE_ACCELEROMETER){
+            float[] accelerometerVectorSample = event.values;
+            if (accelerometerVectorSample.length >= 3) {
+                float x = accelerometerVectorSample[0];
+                float y = accelerometerVectorSample[1];
+                float z = accelerometerVectorSample[2];
 
-            //Log.d("MainActivity", "onSensorChanged - X: " + x + " Y: " + y + " Z: " + z);
-
-            if(mStepDetector.detectStep(x, y, z) && stepFlag == false){
-                stepFlag = true;
-                handleStep();
-            } else if (!mStepDetector.detectStep(x, y, z) && stepFlag == true) {
-                stepFlag = false;
-            }
+                if (mStepDetector.detectStep(x, y, z) && stepFlag == false) {
+                    stepFlag = true;
+                    handleStep();
+                } else if (!mStepDetector.detectStep(x, y, z) && stepFlag == true) {
+                    stepFlag = false;
+                }
+        }
+            //Log.d("MainActivity", "onSensorChanged: TEST ");
+        if(event.sensor.getType() == Sensor.TYPE_STEP_COUNTER) {
+             builtInStepCounter = (int) event.values[0];
+            Log.d("MainActivity", "onSensorChanged stepCounterSensor: " + builtInStepCounter);
+             builtInStepCounterView = findViewById(R.id.builtInstepCounterValue);
+             builtInStepCounterView.setText(""+ builtInStepCounterView);
+        }
 
         }
         // [TODO] Update UI elements
@@ -175,9 +224,15 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     @Override
     protected void onPause() {
         super.onPause();
-        Log.d("MainActivity", "onPause:");
-        SharedPreferences sharedPref = getSharedPreferences("MyPrefs", Context.MODE_PRIVATE);
-        SharedPreferences.Editor editor = sharedPref.edit();
+        Log.d("MainActivity", "onPause: entered");
+        editor = sharedPref.edit();
+
+        editor.putInt("currentStepGoal", currentStepGoal);
+        editor.putInt("builtInStepCounter", builtInStepCounter);
+        editor.putInt("totalSteps",totalSteps);
+        editor.putFloat("stepsPerHour", stepsPerHour);
+        editor.putInt("goalsCompleted", goalsCompleted);
+
         editor.apply();
     }
 
@@ -201,12 +256,10 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
     private void handleStep() {
         // [TODO] Update state / UI on step detected
 
-
-
         if (currentStepGoal > 0) {
             currentStepGoal -= 1;
-            EditText editText = findViewById(R.id.editTextNumber);
-            editText.setText("" + (currentStepGoal));
+            editTextNumber = findViewById(R.id.editTextNumber);
+            editTextNumber.setText("" + (currentStepGoal));
             if(currentStepGoal == 0 && goalSet == true) {
                 goalSet = false;
                 sendNotification("Goal Completed");
@@ -222,6 +275,7 @@ public class MainActivity extends AppCompatActivity implements SensorEventListen
 
         stepsPerHourValueView = findViewById(R.id.stepsPerHourValue);
         stepsPerHourValueView.setText("" + stepsPerHour);
+
 
     }
 }
